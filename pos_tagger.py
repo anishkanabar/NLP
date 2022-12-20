@@ -12,6 +12,7 @@ import random
 import time
 import matplotlib.pyplot as plt
 from torchtext import vocab
+import torch.nn.functional as F
 
 SEED = 53113
 random.seed(SEED)
@@ -49,9 +50,7 @@ def add_sent_start_end(data_iter, w):
     for (words, ud_tags, ptb_tags) in data_iter:
         new_words = [SENT_START_WORD] * w + words + [SENT_END_WORD] * w
         new_ud_tags = [SENT_START_TAG] * w+ ud_tags + [SENT_END_TAG] * w
-        ## MISSING PART: ADD YOUR CODE BELOW
         new_ptb_tags = [SENT_START_TAG] * w+ ptb_tags + [SENT_END_TAG] * w
-        ## ADD YOUR CODE ABOVE
         yield(new_words, new_ud_tags, new_ptb_tags)
         
 def create_windows(data_iter, w):
@@ -88,11 +87,6 @@ def test_preprocess_data_seq():
     
 test_preprocess_data_seq()
 
-# It is important to recreate the training set afresh 
-# each time they are used, since they are Python iterators, and
-# once use, cannot be reused.  One could, however, cast them into
-# a list, which would store them permanently.
-
 train_iter_0 = datasets.UDPOS(split='train')    
 train_iter_vocab = preprocess_data_seq(train_iter_0, 1)
 
@@ -113,7 +107,6 @@ from torch.utils.data import DataLoader
 TAG = 'ud'
 
 def collate_fn(batch, w = W, tag = TAG):
-    ## WRITE YOUR CODE BELOW
     vocab_words_itos = vocab_words.get_itos()
     vocab_ud_itos = vocab_ud.get_itos()
 
@@ -159,8 +152,6 @@ def test_collate():
 
 test_collate()
 
-import torch.nn.functional as F
-
 class NNPOSTagger(nn.Module):
     def __init__(self,
                  window_size,
@@ -174,7 +165,6 @@ class NNPOSTagger(nn.Module):
                  freeze_glove = False):      
         super(NNPOSTagger, self).__init__()
         
-        ## WRITE YOUR CODE BELOW 
         self.window_size = window_size
         self.embedding_dim = embedding_dim
         self.nonlinearity = nonlinearity
@@ -184,8 +174,7 @@ class NNPOSTagger(nn.Module):
       
         
     def forward(self, word_idxs_batch):
-        
-        ## WRITE YOUR CODE BELOW.
+
         embeds = self.Embedding(word_idxs_batch).reshape(len(word_idxs_batch), self.window_size * self.embedding_dim)
         out = self.nonlinearity(self.Linear1(embeds))
         out = self.Linear2(out)
@@ -269,8 +258,6 @@ accuracy
 glove = vocab.GloVe('6B',cache=VECTORS_CACHE_DIR)
 glove_vectors = glove.get_vecs_by_tokens(vocab_words.get_itos())
 
-import torch.nn.functional as F
-
 class NNPOSTagger(nn.Module):
     def __init__(self,
                  window_size,
@@ -337,9 +324,6 @@ model = NNPOSTagger(window_size = WINDOW_SIZE,
                      use_glove = True,
                      freeze_glove = False).to(device)
 
-import time
-import matplotlib.pyplot as plt
-
 EPOCHS = 15 # epoch
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
@@ -353,5 +337,4 @@ for epoch in range(1, EPOCHS + 1):
     print(f'Epoch: {epoch}, time taken: {time_taken:.1f}s, validation accuracy: {accuracy:.3f}.')
     
 plt.plot(range(1, EPOCHS+1), accuracies)
-
 print(get_accuracy(test_dataloader))
