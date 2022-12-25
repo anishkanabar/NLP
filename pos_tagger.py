@@ -15,6 +15,7 @@ import time
 import matplotlib.pyplot as plt
 from torchtext import vocab
 import torch.nn.functional as F
+from torch.utils.data import DataLoader
 
 SEED = 53113
 random.seed(SEED)
@@ -27,14 +28,15 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 VECTORS_CACHE_DIR = './.vector_cache'
 
-W = 1
-WINDOW_SIZE = (2 * W + 1)
-SENT_START_WORD = ''
-SENT_END_WORD = ''
-SENT_START_TAG = ''
-SENT_END_TAG = ''
+W = 1 # the number of words to each side of the subsequence center
+WINDOW_SIZE = (2 * W + 1) # the length of the subsequence
+SENT_START_WORD = '<s>' # dummy start word
+SENT_END_WORD = '</s>' # dummy end word
+SENT_START_TAG = '<STAG>' # tag for dummy start word
+SENT_END_TAG = '<ETAG>' # tag for dummy end word 
 
 def add_sent_start_end(data_iter, w):
+    """Adds the dummy words and corresponding tags (so that no words are skipped)"""
     for (words, ud_tags, ptb_tags) in data_iter:
         new_words = [SENT_START_WORD] * w + words + [SENT_END_WORD] * w
         new_ud_tags = [SENT_START_TAG] * w+ ud_tags + [SENT_END_TAG] * w
@@ -42,6 +44,7 @@ def add_sent_start_end(data_iter, w):
         yield(new_words, new_ud_tags, new_ptb_tags)
         
 def create_windows(data_iter, w):
+    """Creates the subsequences to be fed into the model"""
     window_size = 2*w + 1
     for (words, ud_tags, ptb_tags) in data_iter:
         words_zip = zip(*[words[i:] for i in range(window_size)])
@@ -52,6 +55,7 @@ def create_windows(data_iter, w):
             yield(word_sseq, ud_sseq, ptb_sseq)
             
 def preprocess_data_seq(data_iter, w):
+    """Calls the above two functions"""
     data_iter_a = add_sent_start_end(data_iter, w)
     data_iter_b = create_windows(data_iter_a, w)
     return data_iter_b
@@ -91,7 +95,6 @@ vocab_words = vocab(counter_words)
 vocab_ud = vocab(counter_ud)
 vocab_ptb = vocab(counter_ptb)
 
-from torch.utils.data import DataLoader
 TAG = 'ud'
 
 def collate_fn(batch, w = W, tag = TAG):
