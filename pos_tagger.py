@@ -60,47 +60,30 @@ def preprocess_data_seq(data_iter, w):
     data_iter_b = create_windows(data_iter_a, w)
     return data_iter_b
 
-def test_preprocess_data_seq():
-    train_iter_0 = datasets.UDPOS(split = 'train')    
-    train_iter_demo = preprocess_data_seq(train_iter_0, 1)
-    ex0 = (('', 'Al', '-'), 
-           ('', 'PROPN', 'PUNCT'), 
-           ('', 'NNP', 'HYPH'))
-    ex1 = (('Al', '-', 'Zaman'), 
-           ('PROPN', 'PUNCT', 'PROPN'), 
-           ('NNP', 'HYPH', 'NNP'))
-    ex2 = (('-', 'Zaman', ':'), 
-           ('PUNCT', 'PROPN', 'PUNCT'), 
-           ('HYPH', 'NNP', ':'))
-    assert ex0 == next(train_iter_demo)
-    assert ex1 == next(train_iter_demo)
-    assert ex2 == next(train_iter_demo)
-    print('Test passed.')
-    
-test_preprocess_data_seq()
+def create_vocab():
+    """Creates a torchtext vocab object from the training data"""
+    train_iter_0 = datasets.UDPOS(split='train')    
+    train_iter_vocab = preprocess_data_seq(train_iter_0, 1)
+    counter_words = Counter()
+    counter_ud = Counter()
+    counter_ptb = Counter()
+    for (text, pos_ud, pos_ptb) in train_iter_vocab:
+        counter_words.update(text)
+        counter_ud.update(pos_ud)
+        counter_ptb.update(pos_ptb)
+    vocab_words = vocab(counter_words)    
+    vocab_ud = vocab(counter_ud)
+    vocab_ptb = vocab(counter_ptb)
+    return vocab_words, vocab_ud, vocab_ptb
 
-train_iter_0 = datasets.UDPOS(split='train')    
-train_iter_vocab = preprocess_data_seq(train_iter_0, 1)
-
-counter_words = Counter()
-counter_ud = Counter()
-counter_ptb = Counter()
-
-for (text, pos_ud, pos_ptb) in train_iter_vocab:
-    counter_words.update(text)
-    counter_ud.update(pos_ud)
-    counter_ptb.update(pos_ptb)
-
-vocab_words = vocab(counter_words)    
-vocab_ud = vocab(counter_ud)
-vocab_ptb = vocab(counter_ptb)
+vocab_words, vocab_ud, vocab_ptb = create_vocab()
 
 TAG = 'ud'
 
-def collate_fn(batch, w = W, tag = TAG):
+def collate_fn(batch, w=W, tag=TAG):
+    """Collates a tensor with the index of the tag for the center word in each subsequence with a tensor with index of each word in each subsequence"""
     vocab_words_itos = vocab_words.get_itos()
     vocab_ud_itos = vocab_ud.get_itos()
-
     labels = torch.zeros(len(batch), dtype=torch.int64).to(device)
     word_idxs = torch.zeros(len(batch), len(batch[0][0]), dtype=torch.int64).to(device)
     for i in range(len(batch)):
@@ -111,39 +94,10 @@ def collate_fn(batch, w = W, tag = TAG):
             word = batch[i][0][j]
             if word in vocab_words_itos:
                 word_idxs[i,j] = vocab_words_itos.index(word)
-    return labels.to(device), word_idxs.cuda()
-
-def test_collate():
-    pos = [5, 6, 1, 4]  
-    examples = []
-    vocab_words_itos = vocab_words.get_itos()
-    vocab_ud_itos = vocab_ud.get_itos()
-    vocab_ptb_itos = vocab_ptb.get_itos()
-
-    for perm in ['03022', '33210', '33211', '11101']:
-        words = []
-        utags = []
-        ptags = []
-        for ind in perm:
-            ind = int(ind)
-            words.append(vocab_words_itos[pos[ind]])
-            utags.append(vocab_ud_itos[pos[ind]+1])
-            ptags.append(vocab_ptb_itos[pos[ind]])
-        examples.append((words, utags, ptags))
-    lt =  torch.tensor([6, 2, 2, 7]).to(device)
-    wt = torch.tensor([
-        [5, 4, 5, 1, 1],
-        [4, 4, 1, 6, 5],
-        [4, 4, 1, 6, 6],
-        [6, 6, 6, 5, 6]]).to(device)
-    rlt, rwt = collate_fn(examples, w = 2)
-    assert torch.equal(lt, rlt)
-    assert torch.equal(wt, rwt)
-    print("Test passed")
-
-test_collate()
+    return labels.to(device), word_idxs.to(device)
 
 class NNPOSTagger(nn.Module):
+    """Defines the model architecture (without GloVe embeddings)"""
     def __init__(self,
                  window_size,
                  vocab_size, 
@@ -151,21 +105,16 @@ class NNPOSTagger(nn.Module):
                  hidden_dim, 
                  output_dim,
                  nonlinearity, 
-                 # These are used for later tasks
                  use_glove = False, 
                  freeze_glove = False):      
         super(NNPOSTagger, self).__init__()
-        
         self.window_size = window_size
         self.embedding_dim = embedding_dim
         self.nonlinearity = nonlinearity
         self.Embedding = nn.Embedding(vocab_size, embedding_dim)
         self.Linear1 = nn.Linear(window_size * embedding_dim, hidden_dim)
         self.Linear2 = nn.Linear(hidden_dim, output_dim)
-      
-        
     def forward(self, word_idxs_batch):
-
         embeds = self.Embedding(word_idxs_batch).reshape(len(word_idxs_batch), self.window_size * self.embedding_dim)
         out = self.nonlinearity(self.Linear1(embeds))
         out = self.Linear2(out)
@@ -184,10 +133,9 @@ model = NNPOSTagger(window_size = WINDOW_SIZE,
 loss_function = torch.nn.NLLLoss()
 
 def train_an_epoch(dataloader):
+    """Computes the gradient and backpropagates"""
     model.train() 
-    log_interval = 500
-
-    for idx, (label, text) in enumerate(dataloader):
+    for _, (label, text) in enumerate(dataloader):
         model.zero_grad()
         log_probs = model(text)
         loss = loss_function(log_probs, label)
@@ -195,6 +143,7 @@ def train_an_epoch(dataloader):
         optimizer.step()
 
 def get_accuracy(dataloader):
+    """Calculates the (flat) accuracy"""
     model.eval()
     with torch.no_grad():    
         total_acc, total_count = 0, 0
@@ -225,6 +174,7 @@ test_dataloader = DataLoader(test_data, batch_size=BATCH_SIZE,
 EPOCHS = 3 
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
+# Train the model 
 accuracies=[]
 for epoch in range(1, EPOCHS + 1):
     epoch_start_time = time.time()
@@ -245,10 +195,12 @@ for epoch in range(1, EPOCHS + 1):
 accuracy = get_accuracy(test_dataloader)
 accuracy
 
+# Define the GloVe embeddings 
 glove = vocab.GloVe('6B',cache=VECTORS_CACHE_DIR)
 glove_vectors = glove.get_vecs_by_tokens(vocab_words.get_itos())
 
 class NNPOSTagger(nn.Module):
+    """Defines the model architecture (with GloVe embeddings)"""
     def __init__(self,
                  window_size,
                  vocab_size, 
@@ -259,18 +211,15 @@ class NNPOSTagger(nn.Module):
                  use_glove = True, 
                  freeze_glove = False):      
         super(NNPOSTagger, self).__init__()
-
         self.window_size = window_size
         self.embedding_dim = embedding_dim
         self.nonlinearity = nonlinearity
-        
         if use_glove:
             self.Embedding = nn.Embedding.from_pretrained(glove_vectors, freeze=freeze_glove)
         else:
             self.Embedding = nn.Embedding(vocab_size, embedding_dim)
         self.Linear1 = nn.Linear(window_size * embedding_dim, hidden_dim)
         self.Linear2 = nn.Linear(hidden_dim, output_dim)
-        
     def forward(self, word_idxs_batch):
         embeds = self.Embedding(word_idxs_batch).reshape(len(word_idxs_batch), self.window_size * self.embedding_dim)
         out = self.nonlinearity(self.Linear1(embeds))
@@ -278,7 +227,7 @@ class NNPOSTagger(nn.Module):
         log_probs = F.log_softmax(out, dim=1)
         return log_probs
 
-
+# Instantiate the model with frozen GloVe embeddings
 model = NNPOSTagger(window_size = WINDOW_SIZE, 
                 vocab_size = len(vocab_words), 
                     embedding_dim = 300, 
@@ -291,6 +240,7 @@ model = NNPOSTagger(window_size = WINDOW_SIZE,
 EPOCHS = 15
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
+# Train the model
 accuracies=[]
 for epoch in range(1, EPOCHS + 1):
     epoch_start_time = time.time()
@@ -304,6 +254,7 @@ plt.plot(range(1, EPOCHS+1), accuracies)
 
 print(get_accuracy(test_dataloader))
 
+# Instantiate the model with unfrozen GloVe embeddings 
 model = NNPOSTagger(window_size = WINDOW_SIZE, 
                     vocab_size = len(vocab_words), 
                      embedding_dim = 300, 
@@ -316,6 +267,7 @@ model = NNPOSTagger(window_size = WINDOW_SIZE,
 EPOCHS = 15 
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
+# Train the model 
 accuracies=[]
 for epoch in range(1, EPOCHS + 1):
     epoch_start_time = time.time()
