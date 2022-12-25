@@ -1,3 +1,5 @@
+# A neural network based part of speech (POS) tagger
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -21,26 +23,12 @@ torch.manual_seed(SEED)
 if torch.cuda.is_available():
     torch.cuda.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
-
-device = torch.device('cuda')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 VECTORS_CACHE_DIR = './.vector_cache'
 
-# Use the UDPOS dataset
-train_iter = datasets.UDPOS(split='train')
-for i, example in enumerate(train_iter):
-    print(f'The sentence for Example {i} ---')
-    print(example[0])
-    print(f'The UD tags for Example {i} ---')
-    print(example[1])
-    print(f'The PTB tags for Example {i} ---')
-    print(example[2])
-    print()
-    if i == 2: break
-
 W = 1
 WINDOW_SIZE = (2 * W + 1)
-
 SENT_START_WORD = ''
 SENT_END_WORD = ''
 SENT_START_TAG = ''
@@ -193,8 +181,7 @@ model = NNPOSTagger(window_size = WINDOW_SIZE,
 loss_function = torch.nn.NLLLoss()
 
 def train_an_epoch(dataloader):
-    ## WRITE YOUR CODE BELOW
-    model.train() # Sets the module in training mode.
+    model.train() 
     log_interval = 500
 
     for idx, (label, text) in enumerate(dataloader):
@@ -214,7 +201,7 @@ def get_accuracy(dataloader):
             total_count += label.size(0)
     return total_acc/total_count
 
-BATCH_SIZE = 64 # batch size for training
+BATCH_SIZE = 64 
   
 train_0, valid_0, test_0 = train_data_0 = datasets.UDPOS(
     split = ('train', 'valid', 'test'))
@@ -232,7 +219,7 @@ test_dataloader = DataLoader(test_data, batch_size=BATCH_SIZE,
                              shuffle=False, 
                              collate_fn=collate_fn)
 
-EPOCHS = 3 # epoch
+EPOCHS = 3 
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
 accuracies=[]
@@ -246,7 +233,7 @@ for epoch in range(1, EPOCHS + 1):
     
 plt.plot(range(1, EPOCHS+1), accuracies)
 
-EPOCHS = 15 # epoch
+EPOCHS = 15 
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
 for epoch in range(1, EPOCHS + 1):
@@ -266,7 +253,6 @@ class NNPOSTagger(nn.Module):
                  hidden_dim, 
                  output_dim,
                  nonlinearity, 
-                 # These are used for later tasks
                  use_glove = True, 
                  freeze_glove = False):      
         super(NNPOSTagger, self).__init__()
@@ -283,23 +269,23 @@ class NNPOSTagger(nn.Module):
         self.Linear2 = nn.Linear(hidden_dim, output_dim)
         
     def forward(self, word_idxs_batch):
-        
         embeds = self.Embedding(word_idxs_batch).reshape(len(word_idxs_batch), self.window_size * self.embedding_dim)
         out = self.nonlinearity(self.Linear1(embeds))
         out = self.Linear2(out)
         log_probs = F.log_softmax(out, dim=1)
         return log_probs
 
-    model = NNPOSTagger(window_size = WINDOW_SIZE, 
-                    vocab_size = len(vocab_words), 
-                     embedding_dim = 300, 
-                     hidden_dim = 128, 
-                     output_dim = len(vocab_ud),
-                     nonlinearity = nn.Tanh(), 
-                     use_glove = True,
-                     freeze_glove = True).to(device)
 
-EPOCHS = 15 # epoch
+model = NNPOSTagger(window_size = WINDOW_SIZE, 
+                vocab_size = len(vocab_words), 
+                    embedding_dim = 300, 
+                    hidden_dim = 128, 
+                    output_dim = len(vocab_ud),
+                    nonlinearity = nn.Tanh(), 
+                    use_glove = True,
+                    freeze_glove = True).to(device)
+
+EPOCHS = 15
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
 accuracies=[]
@@ -324,7 +310,7 @@ model = NNPOSTagger(window_size = WINDOW_SIZE,
                      use_glove = True,
                      freeze_glove = False).to(device)
 
-EPOCHS = 15 # epoch
+EPOCHS = 15 
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
 accuracies=[]
