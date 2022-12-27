@@ -190,7 +190,6 @@ for epoch in range(NUM_EPOCHS):
             val_loss = model.evaluate(val_loader)
             print(f'At iteration {i} the validation loss is {val_loss:.3f}.')
 
-
 # Evaluate the loss of best_model on the test set and compute its perplexity.
 test_loss = evaluate(best_model, test_loader)
 print("perplexity: ", np.exp(test_loss))
